@@ -1,0 +1,14 @@
+id,resolved,status,task_s,wall_s,tool_calls,llm_calls,total_tokens,patch_chars,test_exit_code,error,trace_path,agent_s,submit_at_s,max_prompt_tokens,agents_reached
+fastapi_14448,False,SUCCESS,371.1,371.2,25,26,0,809,1,Agent exceeded session timeout (6.0 min),/kaggle/working/results/traces/trace_fastapi_14448.json,320.5,,7840,localizer > coder
+fastapi_14479,False,SUCCESS,125.2,125.3,34,38,0,521,1,,/kaggle/working/results/traces/trace_fastapi_14479.json,121.3,120.98842859268188,10785,localizer > coder > verifier
+fastapi_14786,True,SUCCESS,61.9,62.0,11,15,0,403,0,,/kaggle/working/results/traces/trace_fastapi_14786.json,58.4,58.095221757888794,4713,localizer > coder > verifier
+fastapi_14873,False,SUCCESS,365.9,365.9,66,71,0,0,-1,Agent exceeded session timeout (6.0 min),/kaggle/working/results/traces/trace_fastapi_14873.json,354.6,,15174,localizer > coder > verifier
+fastapi_15588,False,SUCCESS,175.0,175.1,20,24,0,1486,1,,/kaggle/working/results/traces/trace_fastapi_15588.json,170.5,170.15667247772217,8728,localizer > coder > verifier
+fastapi_15661,False,SUCCESS,366.4,366.4,35,36,0,0,-1,Agent exceeded session timeout (6.0 min),/kaggle/working/results/traces/trace_fastapi_15661.json,353.7,,16876,localizer > coder
+rich_3006,True,SUCCESS,297.3,297.3,53,57,0,1579,0,,/kaggle/working/results/traces/trace_rich_3006.json,294.6,294.223415851593,13255,localizer > coder > verifier
+rich_3043,True,SUCCESS,365.6,365.6,32,35,0,448,0,,/kaggle/working/results/traces/trace_rich_3043.json,314.2,,10602,localizer > coder > verifier
+rich_3063,False,SUCCESS,363.2,363.2,150,151,0,0,-1,Agent exceeded session timeout (6.0 min),/kaggle/working/results/traces/trace_rich_3063.json,353.4,,14612,localizer > coder
+rich_3067,True,SUCCESS,329.4,329.4,61,67,0,652,0,,/kaggle/working/results/traces/trace_rich_3067.json,326.6,326.22304940223694,14459,localizer > coder > verifier
+rich_3480,False,SUCCESS,665.5,665.5,39,40,0,2713,124,Agent exceeded session timeout (6.0 min),/kaggle/working/results/traces/trace_rich_3480.json,362.9,,11906,localizer > coder
+rich_3718,False,SUCCESS,239.3,239.3,36,40,0,493,1,,/kaggle/working/results/traces/trace_rich_3718.json,236.5,236.19740915298462,13788,localizer > coder > verifier
+rich_3930,False,SUCCESS,366.2,366.2,24,28,0,894,2,Agent exceeded session timeout (6.0 min),/kaggle/working/results/traces/trace_rich_3930.json,326.6,,12313,localizer > coder

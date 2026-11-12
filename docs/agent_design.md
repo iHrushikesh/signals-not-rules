@@ -652,3 +652,29 @@ Build 11 (fingerprint `54f950e7`) on probe8m (`results/probe8m-1/`, notebook v5,
 4. **Rule (d) still does not bind.** rich_4006's localizer wrote files with heredocs three times and rich_3894's ran python 8 times. It costs time and leaves stray files in the patch (rich_3894 and rich_4006).
 
 **Candidate single changes, each to be probed alone against this baseline:** (i) the coder may not call run_command before its first edit_file (read_file only); (ii) every python command in the localizer and coder prompts is prefixed with `timeout 30`; (iii) the 8-minute cap (PLAN item 16). The malformed edit_file loop of fastapi_14262 cannot be observed on this set; it remains the LoRA target.
+
+### 11.17 Build 11 on the remaining 13 measurable tuning tasks (Nov 12)
+
+Build 11 (fingerprint `54f950e7`), unchanged, on the 13 measurable tuning tasks not in probe8m (`results/probe13m-1/`, notebook v5 with the task list swapped; the banner still says probe8m). With probe8m-1 this is one run of build 11 on the whole measurable tuning split: **8 of 21 resolved** (95% Wilson interval 0.21 to 0.59); mean task time 319 s; 10 of 21 tasks hit the 6-minute cap. Time share over the 21 tasks: coder 69%, localizer 23%, verifier 8%.
+
+**Decision rule on the 13:** passes (a), (b) with 8 of 13, (c) with 10 of 13 and (e); fails (d) (localizer python in rich_3006, rich_3063 and rich_3067). Resolved 4 of 13: fastapi_14786, rich_3006, rich_3043, rich_3067. rich_3043 resolved although the verifier replied NOT VERIFIED; the finalizer submitted the working tree.
+
+| Task | Resolved | Task time (s) | Coder's first edit (s) | Reached | What happened |
+|---|---|---|---|---|---|
+| fastapi_14448 | no | 371 | 197 | coder | edited `dependencies/models.py`; the reference also changes `dependencies/utils.py` (82 added lines); 4 python runs before the edit; cap before the verifier |
+| fastapi_14479 | no | 125 | 84 | verifier | wrong one-line fix in the right file; verifier approved it |
+| fastapi_14786 | yes | 62 | 31 | verifier | submitted at 60 s |
+| fastapi_14873 | no | 366 | none | verifier | 57 coder calls re-reading `routing.py` (several `read_file` calls with a `start_line"` key, two tool calls emitted as text); no edit; verifier replied NOT VERIFIED |
+| fastapi_15588 | no | 175 | 68 | verifier | five edits to `sse.py`, wrong; verifier approved |
+| fastapi_15661 | no | 366 | none | coder | reads and greps for 313 s; the reference adds 216 lines to a release script; no edit |
+| rich_3006 | yes | 297 | 181 | verifier | localizer ran python 19 times (171 s); its `reproduce_issue.py` is in the patch |
+| rich_3043 | yes | 366 | 96 | verifier | coder 244 s; verifier said NOT VERIFIED; finalizer submitted at the cap; tests pass |
+| rich_3063 | no | 363 | none | coder | localizer: 140 commands, 121 distinct, 124 of them python one-liners probing backslash escapes (291 s); coder had 63 s; reference is 3 lines in `markup.py` |
+| rich_3067 | yes | 329 | 93 | verifier | coder 137 s, verifier 117 s |
+| rich_3480 | no | 666 | 219 | coder | three edits to the binary search in `text.py`; the result still loops (hidden tests time out, exit 124); the coder's last reproduction hit the 120 s command timeout |
+| rich_3718 | no | 239 | 115 | verifier | wrong fix in `panel.py` (reference is 3 lines); verifier approved |
+| rich_3930 | no | 366 | 327 | coder | three `edit_file` calls rejected for a missing parameter before one landed; the hidden tests import `rich._unicode_data`, a package only the reference fix creates (12,170 added lines) |
+
+**Taxonomy over the 21 tasks.** 8 resolved. 6 ended with no edit: 4 where the coder explored for its whole budget (rich_3061 and fastapi_13920 with 20 and 15 python one-liners; fastapi_14873 and fastapi_15661 with 57 and 21 reads and greps), 2 where the localizer used most of the budget (rich_4006 on a reproduction that hit the infinite loop; rich_3063 on 140 commands). 6 ended with a wrong fix in a file the reference also changes (rich_3470, fastapi_14448, fastapi_14479, fastapi_15588, rich_3718, rich_3480); the verifier approved three (14479, 15588, 3718), caught one with 25 s left (3470), and never ran in two (14448, 3480). 1 is measurable but not achievable (rich_3930).
+
+**What changes in the picture.** The coder's exploration without editing is confirmed as the largest single loss (4 of 13 failures), and it is not only python one-liners: in the two fastapi tasks it was reads and greps, so a rule about run_command alone would not cover it. Wrong fixes are as common as no fixes (6 and 6), and the verifier's own checks approve them because they cannot see the hidden tests; what the verifier can do is run the existing test file, which caught rich_3470's regression and would not catch a wrong-but-non-breaking fix. The gold check certifies that a task is measurable, not that it is achievable: rich_3930 needs a new package.

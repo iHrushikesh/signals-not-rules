@@ -1,0 +1,4 @@
+==============================================================================
+PROBE NOTEBOOK : probe8m notebook v5 (2026-11-11): measurable task set, no test-deps install
+AGENT BUILD    : fingerprint 54f950e7  (folder /kaggle/input/datasets/hrushi/agent-submission)
+==============================================================================
