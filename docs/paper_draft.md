@@ -1,159 +1,179 @@
 # Signals, Not Rules
 
-*What nine builds of an offline Gemma 4 coding agent taught us about controlling a small model, and about trusting the benchmark*
+*How an Offline Coding Agent Loses Time, Work, and Credit*
 
 ## Abstract
 
-Can a small open model fix real bugs on its own, offline, under a strict time budget? We studied this in a competition where one quantised Gemma 4 model, running locally, must repair about 120 unseen Python bugs within 12 hours. We built a four-role agent (locate, fix, verify, submit), ran nine versions of it on a fixed set of development tasks, and read every execution log.
+A coding agent can spend its entire execution budget investigating a bug without attempting a fix. We investigate how such failures arise, and how different forms of control influence agent behaviour, in an offline coding agent built around a quantised 31B Gemma 4 model. Across nine configurations and 93 task runs under a six-minute task budget, we analyse repeated actions, malformed tool calls, verification failures, and unintended loss of patches. Instructions to monitor budgets, avoid repetition, and preserve work were followed inconsistently. Counting each distinct call once, tools taking several structured arguments were malformed in 6–10% of calls in both evaluation stages, against at most 0.2% for a tool taking one shell command; identical resends inflated the editing tool's raw rate to 47% in the first stage. Tool-result warnings coincided with exits from prolonged loops, while later configurations using protected verification procedures showed no recurrence of patch erasure. Nevertheless, prolonged exploration without edits persisted in runs without long identical-call loops. Interpreting these failures also required validating the evaluation environment: 59 of 129 development tasks failed a check requiring the reference patch to pass and unchanged code to fail. The final configuration resolved 8 of 21 validated tuning tasks.
 
-Three results stand out. First, the model mostly ignored rules written in its instructions, such as budget limits and bans on risky commands, but tended to follow feedback that arrived in tool responses and the structure of the reply it was asked to produce. Second, malformed tool calls depended on the tool's argument structure: 47% of calls to an editing tool that takes two blocks of code were malformed, against 0.2% for a tool that takes one free-text command. Third, when we checked the development tasks with their official fixes, 59 of 129 could not be measured in our evaluation environment at all, mostly because of missing test packages; five of our eight original test tasks were among them, so earlier results had under-counted correct fixes.
-
-The implication for building agents on small models is to put control where the model looks: in tool outputs, reply templates and deterministic scripts rather than in prompt rules, and to validate the evaluation environment before trusting any score.
+These observations motivate a design hypothesis: tool feedback, structured responses, and deterministic procedures can provide more effective operational control than prompt rules alone. Although the comparisons do not isolate causal effects, the study identifies concrete mechanisms and failure modes for future controlled experiments.
 
 ## 1. Introduction
 
-This competition requires one quantised Gemma 4 model, served locally by vLLM on four 24 GB L4 GPUs, to fix about 120 unseen bugs in 12 hours with no internet. At our measured 31 tokens per second, that is roughly six minutes and 11,000 generated tokens per task.
+An autonomous coding agent must do more than identify a plausible repair. It must decide when to stop investigating, express changes through the available tools, and check its work without destroying it, all within a fixed execution budget.
 
-We planned a controlled comparison of where to spend that budget, but within a few runs the agent was losing most tasks to loops, malformed tool calls and self-inflicted damage. We switched to an iterative protocol: change one thing, probe it on a fixed task subset, read every log, and decide by rules written before the results.
+Instructions can state these requirements, but stating them does not establish that an agent follows them. Should operational control instead enter through tool feedback, required response structure, or executable procedures? Answering requires execution traces alongside task outcomes, because a failed evaluation can reflect an incorrect repair, a workflow breakdown, or a problem in the evaluation environment.
 
-Contributions:
+We examine these distinctions in a case study on the public development tasks and harness of the Gemma 4 Developer Agent Competition (Markowitz et al., 2026). Our initial question was how to divide a fixed budget among model size, verification retries, and code-navigation tools; recurrent operational failures led instead to an iterative observational study of control and measurement. We contribute:
 
-1. A validation of the 129 development tasks showing that 59 cannot be measured in our evaluation environment, with the causes.
-2. An account, from execution logs, of how a 31B open model fails as a multi-role coding agent under a tight budget, across nine builds and 72 task runs.
-3. Observations that prompt rules about budgets and behaviour did not bind while tool-result text and reply structure did, and a design conjecture that follows.
-4. Counts of malformed tool calls by interface, showing a strong association between argument structure and failure rate.
+1. An analysis of operational failures and responses to control mechanisms across nine configurations and 93 task runs.
+2. Malformed tool-call counts that separate interface errors from their amplification through repetition.
+3. An audit of 129 development tasks, and an evaluation of the final configuration on the 21 tuning tasks that passed.
+4. A design hypothesis about placing control in tool feedback, response structure, and deterministic procedures, with competing explanations and counterexamples.
 
-## 2. Setup
+## 2. Experimental setting and study design
 
-**Task and scoring.** Each task is a GitHub issue in a Python repository at a fixed commit. The agent works in a sandboxed checkout and submits a patch; a clean container then applies the patch and the hidden tests, and the task counts as resolved only if every test in those files passes. Scoring uses about 120 tasks from private repositories.
+**Setting and budget.** The competition allows 12 hours for about 120 tasks, including sandbox setup but excluding grading, and restricts agents to Gemma 4 models. We chose a six-minute task cap from that allowance. The model is the largest variant, Gemma 4 31B with 4-bit weights and 16-bit activations, served by vLLM on four 24 GB L4 GPUs without internet access. At a measured 31 generated tokens per second, six minutes permits about 11,000 tokens before tool execution.
 
-**Budget.** The 12-hour total is fixed; per-task caps on time, tool calls and turns are ours to choose. Our builds use a 6-minute cap, the total divided by the task count.
+**Agent.** Four roles share the model. The *localizer* identifies where a change belongs; in the final configuration it is told not to modify files or execute code. The *coder* edits the repository. The *verifier* checks the patch with reproductions and existing tests, then submits it or requests another coding round, for at most three rounds; a *finalizer* provides a fallback submission. Each role sees its own instructions and a short handoff from the preceding role. Only the coder generates reasoning tokens, at most 1,024 per call.
 
-**Agent.** The agent is built with the Google Agent Development Kit (ADK) and runs four roles in a fixed order, all served by the same model. The *localizer* searches the code, read-only, and names the places to change. The *coder* edits the code. The *verifier* reproduces the issue, runs existing tests, and either submits the patch or sends it back with a review. The coder and verifier alternate for at most three rounds; if no round ends in a submission, the *finalizer* submits whatever is in the working tree. Each role sees only its own instructions and a short summary from the previous role. Reasoning-token generation is enabled for the coder only, with a budget of 1,024 tokens per call; the other roles answer directly.
+**Data and outcomes.** The competition's 129 public development tasks are bug fixes and feature requests from rich, fastapi, requests, and httpx, released with problem statements, repository snapshots, reference patches, and evaluation tests (Markowitz et al., 2026). The agent receives the problem and the repository with its existing tests. A task is resolved when the submitted patch passes all tests the evaluator requires.
 
-**Development data.** The organisers provide 129 tasks from four public repositories. We froze a split before any comparison: 42 tasks for tuning, 87 held out. For fast iteration we chose a fixed *probe set* of 8 tuning tasks representative of the full set in patch size, hunk count, issue length and multi-file share.
+**Validation and splits.** Before any comparison we froze a split of 42 tuning and 87 held-out tasks. Later validation required the reference patch to pass and unchanged code to fail in our local evaluation environment. Seventy tasks met both conditions: 21 tuning and 49 held-out.
 
-**Probe protocol.** We call each agent version a *build*, numbered in the order we made them. Each build ran once on the probe set on the competition hardware, saving a full execution log (a *trace*) per task. Because 8 tasks cannot separate builds statistically, decisions used process measures under a rule written before each run. A build was eligible for submission only if: (a) no task repeated one identical tool call more than 10 times in a row; (b) at least as many tasks reached the verifier as in the reference build; (c) at least as many tasks ended with a patch that changed source code; (d) the localizer ran no code; and (e) no task ended from the turn cap.
+**Two stages.** Nine configurations each ran once on the same eight tuning tasks, chosen to approximate the development set's patch-size, hunk-count, issue-length, and multi-file distributions. These 72 runs drove iteration. After validation exposed problems in five of those tasks, the final configuration, unchanged, ran on eight validated tuning tasks chosen the same way, then on the remaining thirteen. The study thus contains 93 runs over 26 distinct tasks; the final configuration ran three tasks in both stages. Agents were evaluated only on the tuning split.
 
-## 3. Results across builds
+**Measurements.** We saved execution traces, patches, test outputs, and role timings. Process checks, written after the first probe and fixed before each later one, required no streak exceeding ten identical calls, verifier reach and source-patch coverage at least matching the reference configuration, no localizer execution, and no turn-cap termination. Time shares sum recorded model and tool durations. Several configurations changed multiple components and each configuration-task pair ran once per stage, so comparisons are descriptive, not isolated treatment effects.
 
-One fact is needed to read the table: in 5 of the 8 probe tasks even the official reference fix fails in our evaluation environment (Section 4.6), so the resolution column counts only the 3 tasks that can be passed, while the process columns use all 8.
+## 3. Evidence across configurations
 
-**Table 1.** One probe run per build, 8 tasks each; builds 1 and 9 were never probed on this set. Section 4 describes each change.
+In Table 1, configuration numbers are build numbers; the repository's result folders are numbered by probe run, so `probe8-1` to `probe8-4` hold configurations 2 to 5 and later folders carry the configuration number. The resolution denominator is three because only three original probe tasks passed our later validation; process measures cover all eight.
 
-| Build | Main change | Resolved (/3) | Reached verifier (/8) | Source patch (/8) | Tasks with a call repeated over 10 times (/8) | Mean task time |
+**Table 1.** Original probe: eight tasks per configuration. Configurations 1 and 9 were not run on this set. Mean task time includes local grading.
+
+| Configuration | Main change | Resolved (/3) | Reached verifier (/8) | Source patch (/8) | Tasks with >10 consecutive identical calls (/8) | Mean task time |
 |---|---|---|---|---|---|---|
-| 2 | First 31B build | 1 | 4 | 6 | 3 | 270 s |
-| 3 | Budget rules in prompts, cap 400 | 1 | 2 | 3 | 5 | 325 s |
-| 4 | Localizer stops running code | 2 | 6 | 6 | 3 | 323 s |
+| 2 | Initial 31B pipeline | 1 | 4 | 6 | 3 | 270 s |
+| 3 | Budget instructions; call cap 400 | 1 | 2 | 3 | 5 | 325 s |
+| 4 | Localizer instructions and reply template; call cap 150 | 2 | 6 | 6 | 3 | 323 s |
 | 5 | Localizer sampling | 2 | 4 | 6 | 0 | 310 s |
-| 6 | Prompts as step lists | 3 | 5 | 7 | 2 | 293 s |
+| 6 | Instructions as step lists | 3 | 5 | 7 | 2 | 293 s |
 | 7 | Coder sampling | 2 | 6 | 7 | 1 | 240 s |
-| 8 | Broken-call fixes | 2 | 8 | 7 | 2 | 314 s |
-| 10 | Verifier protects the fix | 3 | 5 | 8 | 1 | 298 s |
-| 11 | Verifier scripts | 3 | 6 | 8 | 1 | 304 s |
+| 8 | Tool-call recovery instructions | 2 | 8 | 7 | 2 | 314 s |
+| 10 | Protected verification commands | 3 | 5 | 8 | 1 | 298 s |
+| 11 | Verification scripts | 3 | 6 | 8 | 1 | 304 s |
 
-The longest identical run was 135 calls (build 3).
+No configuration met every process check. For external context, configurations 2 and 10 received public leaderboard scores of 0.12 and 0.15, which were not used to select configurations or infer treatment effects. Configuration 10 was submitted despite exceeding the repetition threshold because its verifier preserved patches, an explicit exception to the submission rule.
 
-No build passed all five rules. We submitted build 2 and, departing from our own rule, build 10 (Section 5).
+## 4. Control failures and observed responses
 
-## 4. Findings
+### 4.1 Instructions, feedback, and response structure
 
-### 4.1 Prompt rules did not bind; feedback in tool responses did
+Telling the agent to monitor its budget did not reliably produce monitoring. With budget instructions and a 400-call cap, the free `get_status` tool was used once in eight tasks. Five tasks repeated an identical call 30–135 times consecutively. One localizer made 221 calls, only 12 distinct; three created files despite a prohibition.
 
-We first tried the obvious way to control a budget: tell the model (build 3). Its prompts asked every role to check remaining time with a free `get_status` tool, never to repeat a call, and to stop reproducing a bug after one failed attempt. `get_status` was called once in 8 tasks. Five tasks repeated a single call 30 to 135 times in a row; one localizer made 221 calls, 12 of them distinct. The rule against creating files in the repository was broken in three tasks, and those files entered the submitted patches.
+A different pattern appeared near the tool-call limit. With a 150-call cap, the harness appended a warning after call 140: only ten calls remained, and the agent should finalise its work. Two localizers that had repeated one search 84 and 58 times gave their final reply immediately after this warning; two others stopped at calls 147 and 148.
 
-Two other mechanisms did work. The harness appends "Only 10 tool calls remaining" to tool results near the end of the call budget; with a 150-call cap (build 4), two looping localizers stopped at exactly 140 calls, when that text appeared, and the other two at 147 and 148. And the localizer stopped running code entirely after a change (build 4) that both removed the REPRODUCE section from its reply template and told it not to run code. The earlier prompt had asked for reproduction, so this comparison cannot say which of the two changes mattered; we note only that the template changed what the role was asked to deliver, not just what it was told to avoid.
+Response structure also changed alongside behaviour. Removing a REPRODUCE field from the localizer's reply template, while instructing it not to execute code, was followed by no localizer execution in that probe. Both changed together, and the earlier instructions had requested reproduction, so we cannot attribute the outcome to the template alone.
 
-The pattern held throughout: self-monitoring rules were followed inconsistently or not at all; tool-result text and reply-template fields were followed reliably. Since the supporting builds changed more than one thing at a time, we state the conclusion as a conjecture that later builds were designed on: **put control where the model looks, in tool outputs and reply structure, not in instructions.**
+Neither mechanism guaranteed compliance. In the final evaluation, `fastapi_14873` received two verifier reviews reporting that no edits existed, yet produced no patch, although the same configuration had resolved the task in the original probe. The warning evidence rests on four runs, and an instruction in the latest tool result differs from the initial prompt in recency as well as channel. These observations motivate testing where and when instructions are presented; they do not establish reliable control through tool feedback.
 
-### 4.2 Loops: a sampling problem with a budget backstop
+### 4.2 Repetition and exploration without progress
 
-The loops had a clear signature: roles without reasoning tokens, sampled at temperature 0.2, wrote no text between calls, so after one repeat the context held only identical call and result pairs, which the model continued.
+Repetition consumed much of the early budget. Roles without reasoning tokens, sampled at temperature 0.2, often emitted successive calls without intervening text. Raising the call cap from 80 to 400 allowed longer loops; verifier reach fell from four to two tasks.
 
-A tool-call cap is a backstop, not a fix: raising it from 80 to 400 (build 3) let loops run to the time cap, and tasks reaching the verifier fell from 4 to 2 of 8. Switching the localizer to the model card's standard sampling, temperature 1.0 with top-p 0.95 and top-k 64 (build 5), cut the longest identical run from 84 to 3 and its calls from 665 to 250. The same change for the coder (build 7) cut failed edits from 42 of 54 to 2 of 17. The cost: at temperature 1.0 the localizer broke its read-only rule in about one task per run.
+After the localizer switched to temperature 1.0, top-p 0.95, and top-k 64, its longest identical-call streak fell from 84 to two and its total calls from 665 to 250. A similar change for the coder was followed by a drop in failed edit calls from 42/54 to 2/17. These single-run comparisons suggest sensitivity to sampling, with a tradeoff: localizers still sometimes violated their execution restrictions.
 
-### 4.3 Which calls break, by tool
+The final evaluation exposed a limit of the repetition metric. Across all 21 tasks, no identical-call streak exceeded two, yet six tasks ended without a task-relevant edit. Localizers executed code on five tasks despite their instructions; one issued 140 shell commands exploring escape sequences, and other runs repeatedly inspected code or tried small Python examples. Activity can remain unproductive while individual calls differ, so a progress measure should also record workspace changes and time to the first edit.
 
-Across the 40 task runs of builds 6, 7, 8, 10 and 11, malformed calls were concentrated by tool. We count every tool call in the saved traces, and call it malformed if a required argument is missing, an unexpected argument name appears, or line-number text is folded into the file path.
+### 4.3 Interface errors and their amplification
 
-**Table 2.** Malformed calls, builds 6, 7, 8, 10 and 11.
+We classify a call as malformed if a required argument is missing, an unexpected argument name appears, or line-number arguments are embedded in a file path. Raw counts include every repeated attempt; distinct counts treat identical calls by one role within a run as one.
 
-| Tool (arguments) | Calls | Malformed |
+**Table 2.** Malformed calls in 40 runs of configurations 6, 7, 8, 10, and 11 on the original probe.
+
+| Tool (arguments) | Calls | Malformed | Distinct calls | Distinct malformed |
+|---|---|---|---|---|
+| `run_command` (one free-text command) | 1,197 | 2 (0.2%) | 902 | 2 (0.2%) |
+| `read_file` (path, two line numbers) | 599 | 75 (12.5%) | 526 | 35 (6.7%) |
+| `edit_file` (path, two blocks of code) | 153 | 72 (47.1%) | 90 | 9 (10.0%) |
+
+A recurring edit error closed one code block with a backtick instead of a string delimiter, turning the remaining code into invalid argument keys. The tool reported a missing parameter, but the coder sometimes resent the call dozens of times despite an instruction prohibiting this.
+
+On the 21 validated tasks, where such loops did not occur, raw rates were 0/564 for commands, 20/211 for reads (9.5%), and 3/33 for edits (9.1%); distinct-call rates were 0/514, 18/193 (9.3%), and 2/32 (6.2%). The 47% edit rate was therefore largely repetition. What recurred in both stages was a distinct-call rate of 6–10% for the two tools with several structured arguments, against at most 0.2% for the single-command tool. The tools differ in argument structure and generated content, and the samples in task mix, so a controlled interface comparison is needed to test whether simpler argument boundaries reduce errors.
+
+### 4.4 Verification can destroy the work it checks
+
+Verification sometimes erased the patch it was meant to assess. In configurations 7 and 8, the verifier used `git checkout` to compare against original code, removing the fix in three of the fourteen runs that reached verification, although its instructions prohibited this command and explained the risk.
+
+Protected comparison commands saved the patch and tested a separate copy of the code. In the next probe, the verifier copied a 371-character command correctly in seven uses, and no verifier changed the workspace in the five tasks it reached. However, it also adapted a comparison command into a broken script and repeated it 34 times.
+
+Packaging the procedures as three executable scripts reduced the text the model had to reproduce. In the following probe, one comparison-script call returned the correct verdict, the loop did not recur, and mean verifier calls per invocation fell from 12.5 to 10.7. Again no verifier changed the workspace, in six tasks.
+
+These are distinct outcomes: protected commands preceded the disappearance of patch erasure; scripts then simplified execution. Neither establishes that the verifier selected adequate tests or judged every repair correctly.
+
+### 4.5 Where the budget went
+
+Across the 40 runs underlying Table 2, the coder consumed 69% of recorded agent time, the localizer 17%, and the verifier 14%; on the 21 validated tasks, the shares were 70%, 22%, and 8%. In the 40 runs, coder steps averaged 11.7 seconds and 400 generated tokens, and thirteen runs hit the six-minute cap, twelve with an edit already made.
+
+Above 14,336 tokens the harness also truncated conversation history; the three earliest probed configurations experienced 9–15 localizer history resets per probe, followed by repeated searches.
+
+These measurements identify generation time, exploration, and context retention as candidates for intervention. They do not establish that reducing reasoning tokens would improve resolution: faster decisions could also produce less complete repairs.
+
+## 5. Evaluation validity and final outcomes
+
+### 5.1 What the validation audit established
+
+Before a score can describe an agent's repair ability, the environment must accept a known solution. We applied each reference patch and, separately, ran the same evaluation tests on unchanged code, both in the probes' local Kaggle subprocess sandbox, which sees the notebook's installed packages.
+
+Seventy of 129 tasks passed: 41/48 rich, 29/67 fastapi, 0/13 requests, and 0/1 httpx. Of the remaining 59, 42 lacked test dependencies, 14 failed with the reference patch for other reasons, and three passed without a patch. The missing dependencies were `inline_snapshot` in 28 tasks, `dirty_equals` in nine, and `pytest-httpbin` fixtures in eight; three tasks required both of the first two. Of the fourteen other reference failures, thirteen suggest package-version or import-resolution differences, without confirming every cause; the last skipped a required test, which the evaluator correctly rejected.
+
+Five original probe tasks failed validation. In one, the agent produced a patch substantively matching the reference in eight configurations, yet every evaluation rejected it. These findings concern the tested development environment and do not establish a corresponding failure in the private scoring environment.
+
+### 5.2 Outcomes on validated tuning tasks
+
+The final configuration resolved 8/21 tasks (38.1%; 95% Wilson interval 20.8–59.1%). These are tuning results from one run per task, not a held-out estimate or a comparison against earlier configurations. Three of the 21 tasks had also been run by this configuration in the original probe, which resolved all three; here it resolved one, producing a different patch for `rich_3718` and none for `fastapi_14873`. This is the study's only repeat-run evidence, and it shows the variation that single runs conceal.
+
+**Table 3.** Observed outcomes across all 21 validated tuning tasks.
+
+| Outcome | Tasks | Evidence |
 |---|---|---|
-| `run_command` (one free-text command) | 1,197 | 2 (0.2%) |
-| `read_file` (path, two line numbers) | 599 | 75 (12.5%) |
-| `edit_file` (path, two blocks of code) | 153 | 72 (47.1%) |
+| Passed evaluation | 8 | Required tests passed |
+| No task-relevant edit | 6 | Five empty patches; one containing only a reproduction script |
+| Incorrect or incomplete implementation | 4 | Behavioural failures or a timeout |
+| Tests require text or names absent from the problem statement | 3 | An exact error message in two tasks; an unnamed module and class in one |
 
-This is an association: the tools differ in what the model must produce as well as in argument structure, and we did not vary the interface with the task fixed. The `edit_file` failures came from only 9 distinct broken calls, resent repeatedly. In one task, across four builds, the coder closed the first code block with a backtick instead of the string delimiter; the second block was parsed into nonsense keys, the tool reported a missing parameter, and the coder resent the identical call up to 47 times. A call with one free-text argument has no boundary between arguments to get wrong, so our untested hypothesis for the next editing interface is to keep code in one argument and give its position as numbers.
+Of the six tasks without a relevant edit, four spent their coder budgets exploring; one of these also repeatedly supplied malformed read arguments and emitted tool-call syntax as ordinary text. The other two lost substantial time in localisation or reproductions; in `rich_4006`, both the localizer and coder hit 120-second command timeouts.
 
-### 4.4 Moving procedures into code
+Among the four implementation failures, one was submitted as verified, one regression was detected late, and two never reached verification. The approved patch styled a panel's title but not its subtitle, a case absent from the verifier's checks. On `rich_3470`, an existing test exposed the regression with about 23 seconds remaining; the comparison script confirmed it with 17 seconds left.
 
-The verifier must compare behaviour with and without the fix. Left to itself (builds 7 and 8) it did so with `git checkout`, which erased the fix it was checking. This happened in 3 of the 14 tasks that reached the verifier, despite a prompt rule forbidding the command and explaining why, and once it cost a task that every build since build 4 had solved.
-
-We then gave the verifier a sanctioned shell command that saved a copy of the fix and compared on a separate copy of the code (build 10). The model copied the 371-character command exactly in 7 of 7 uses, though once it adapted the comparison command into a broken script and resent it 34 times. That alone stopped the erasure: no verifier run changed the workspace (0 of 5). Finally we moved the same procedures into three small scripts, packaged as an ADK skill, which the verifier calls by name with at most one argument (build 11). Its separate result: the comparison loop did not recur (one script call with the correct verdict, against 41 comparison commands before), verifier calls per run fell from 12.5 to 10.7, and again no run changed the workspace (0 of 6).
-
-An operation the model must get right every time belongs in deterministic code that reports one result line, not in a rule or a long command to retype.
-
-### 4.5 Where the time goes
-
-Pooling builds 6, 7, 8, 10 and 11, the coder used 69% of agent time, the localizer 17% and the verifier 14%. On the 21 measurable tuning tasks it was 69%. Coder calls averaged 11.7 seconds and 400 generated tokens, mostly reasoning. Thirteen of 40 runs hit the 6-minute cap, 12 with an edit already in place, almost all on the two multi-file tasks. The harness also truncates the conversation history past 14,336 tokens; in builds 2, 3 and 4 this reset the localizer's history 9 to 15 times per probe, after which it repeated searches it could no longer see.
-
-For our original budget question, this suggests the binding resource is the coder's generation time, and the largest available gain is fewer tokens per coder call rather than more model capacity or retries.
-
-### 4.6 Most probe tasks could not be measured
-
-Before interpreting agent scores, we checked whether each task's hidden tests accept the reference fix (the official fix from the original pull request) and reject the unchanged code. This check, standard in SWE-bench-style benchmarks, ran in the probes' evaluation environment: a Kaggle notebook running the harness's subprocess sandbox, which sees the notebook's installed packages.
-
-Seventy of the 129 tasks met both conditions: 41 of 48 rich, 29 of 67 fastapi, 0 of 13 requests, 0 of 1 httpx. Of the 59 that did not, 42 need a test package the competition's wheels do not provide (`inline_snapshot` in 28 tasks, `dirty_equals` in 9, `pytest-httpbin` in 8; three tasks need both of the first two, so the counts sum to 45 over 42 tasks), 14 fail their own reference fix with no package missing, and 3 pass with no fix at all.
-
-For the 14 we read the test output. In 13 we diagnose, without certainty, version differences between the notebook's installed packages and the repository's (Pygments-dependent tests in rich, starlette-dependent tests in fastapi, the installed `requests` and `httpx` shadowing the checkout); in the last, a required new test is skipped, which the harness rightly refuses to count as a pass.
-
-Five of our eight original probe tasks were among the 59; in one, our agent's patch matched the reference fix in substance in eight builds and was counted as a failure each time. We have replaced the probe set with 8 measurable tasks chosen by the same criterion. Build 11 then ran once on all 21 measurable tuning tasks and resolved 8 (95% Wilson interval 0.21 to 0.59). Of the 13 failures, 6 ended with no edit: in four the coder explored for its whole budget, with 15 to 20 python one-liners or 21 to 57 reads and greps, and never edited; in two the localizer used most of the budget, once on a reproduction that hit the bug's infinite loop and the 120-second command timeout, once on 140 commands probing escape sequences. Six ended with a wrong fix in a file the reference fix also changes; the verifier approved three of them, since its checks cannot see the hidden tests, caught one that broke an existing test with 25 seconds left, and never ran in two. The last task's hidden tests import a package that only the reference fix creates, so passing the gold check makes a task measurable, not achievable.
-
-We cannot test the official scoring environment directly, but its image installs only pytest and build tools, and its 124 provided wheels (41 packages) do not include the three missing ones. Whether the hidden tasks were validated against their reference fixes before scoring is not stated; if they were, as is standard, this affects development measurement rather than the leaderboard.
-
-## 5. Leaderboard
-
-| Submission | Model and build | Per-task cap | Public score |
-|---|---|---|---|
-| Organisers' sample configuration | 12B | 1 min | 0.03 |
-| Our first pipeline | 12B, three-role loop | 5 min | 0.03 |
-| Build 2 | 31B | 6 min | 0.12 |
-| Build 10 | 31B | 6 min | 0.15 |
-
-The public leaderboard covers about 60 tasks, so 0.12 and 0.15 are roughly 7 and 9 resolved (95% Wilson intervals 0.058 to 0.222 and 0.081 to 0.261) against roughly 2 (0.009 to 0.114) for the earlier submissions. These scores do not establish a statistically significant improvement between any two submissions, and we never chose between builds by them.
-
-Build 10 was submitted despite failing rule (a). Its one long loop left the workspace intact, and its verifier no longer erased fixes, which had cost a task in the build before it.
+The last three failures illustrate a further limit of reference validation. For `fastapi_14479`, the agent implemented the problem statement's example, "Query param … must be of one of the supported types"; tests required "Query parameter … must be one of the supported types". For `fastapi_15588`, the statement gives no message; the patch rejected line feeds in `id` and `event` values, but four of six failing cases failed only because tests match the phrase "must be a single line", and two because a bare carriage return was accepted. For `rich_3930`, tests import a module and a class that the statement never names, and the patch was also far from a complete implementation. The verifier approved the first two patches. We retain the failed benchmark outcomes while distinguishing them from behavioural defects alone. Reference validation shows that a task can be measured, not that its tests follow from the supplied specification.
 
 ## 6. Related work
 
-SWE-bench (Jimenez et al., 2024) defined issue-to-patch evaluation with hidden tests, and Section 4.6 uses its validation logic. SWE-agent (Yang et al., 2024) showed that the agent-computer interface strongly affects performance; Section 4.3 is an instance at the level of argument structure. Agentless (Xia et al., 2024) argued that fixed pipelines can match open-ended agents, which motivated our design. SWE-Gym (Pan et al., 2024) trains open models on agent trajectories, our next direction. Snell et al. (2024) frame our original budget question.
+**Interfaces and control.** SWE-agent (Yang et al., 2024) established the importance of the agent-computer interface. Sigdel and Baral (2026) examine tool schemas under interaction budgets, separating reduced misuse from task completion, as our call counts and traces do. Wang and Huang (2026) study a local agent harness with mechanisms against repetition and premature completion, and report substantial repeat-run variation.
 
-Two recent preprints are closer to what we ended up studying. Sigdel and Baral (2026) compare tool-interface designs for one local model under interaction budgets and find that schemas reduce misuse while task completion stays at zero; our process measures rely on the same separation of contract adherence from task outcome. Wang and Huang (2026) build a local-first harness with mechanisms against repeated actions and premature completion, and caution that repeat-run variation matches their ablation effects, a limit our comparisons share.
+**Procedures and compute.** Agentless (Xia et al., 2024) motivates structured workflows alongside open-ended agents. SWE-Gym (Pan et al., 2024) trains software engineering agents on trajectories, and Snell et al. (2024) study inference-time compute allocation. Our observations identify operational failures that such optimisation must account for.
 
-What we add: for one production harness and model, where control had to sit to be obeyed, which argument structures broke, and how much of a public development set could be measured at all.
+**Evaluation.** SWE-bench (Jimenez et al., 2024) provides the issue-to-patch framework underlying our validation. Our contribution is an empirical account connecting control failures, repeated interface errors, and evaluation limits within one constrained agent system, not a new validation method.
 
-## 7. Limitations
+## 7. Discussion and limitations
 
-Each build ran once on 8 tasks, of which only 3 could be passed, so no resolution difference in Table 1 is statistically meaningful. The validation in Section 4.6 also shrank the pool for future comparisons: 70 measurable tasks, 49 held out and 21 for tuning, all from two repositories (rich and fastapi), with requests contributing none.
+The observations motivate a hypothesis: tool feedback, response structure, and deterministic procedures may provide more effective control than prompt rules alone. Their roles differ: feedback can prompt a transition and a procedure can preserve a patch, but neither guarantees a correct implementation.
 
-How much that pool can detect we estimated by simulation (`analysis/power_simulation.py`): per-task success rates drawn from a Beta distribution with mean 0.15 and concentration 2, a uniform shift on the logit scale, and a paired sign-flip test at alpha 0.05. Power to detect a 10-point gain is 46% with 87 tasks and one run per arm and 93% with three runs; with 49 tasks it is 22% and 70%. Held-out comparisons will therefore need repeated runs or recovered tasks.
+A controlled follow-up should vary instruction placement while holding content and timing fixed, compare alternative interfaces for the same edit, and test whether reserving time for editing and verification improves outcomes, measuring progress, patch preservation, and test resolution separately.
 
-Several builds changed more than one thing, so some attributions in Section 4 are to a group of changes. The dev repositories are popular and were probably in the model's pre-training data. We did not test our pre-registered hypotheses on model size, retries and navigation tools; the reliability problems came first.
+All observations come from one quantised model in one harness, so they cannot show whether the effects depend on model size. Several changes were bundled, each stage used single runs per configuration-task pair, and repeated calls are not independent error events. Validation reduced the eligible pool to 21 tuning and 49 held-out tasks from two repositories. The final evaluation used the tuning pool, and we cannot rule out pre-training exposure to the public repositories. An exploratory power simulation (`analysis/power_simulation.py`) motivates repeated runs for future paired comparisons.
 
 ## 8. Conclusion
 
-For a small open model under a fixed budget, the first problem is not where to spend compute but whether the agent can spend it at all. The controls that worked were the ones the model sees as data: tool results, reply templates, and scripts that do the fragile work and report one line. Next: validated tasks for every comparison, an editing interface that keeps code in one argument, and fine-tuning aimed at the coder's generation cost.
+This case study identifies three obstacles to effective coding agents: making progress within a budget, preserving work during verification, and measuring repairs correctly. Explicit instructions did not reliably prevent unproductive activity or destructive actions. Tool feedback and protected procedures were associated with useful changes in behaviour, but guaranteed neither progress nor correctness. These observations motivate controlled comparisons of prompt rules, tool feedback, response structure, and executable safeguards on validated tasks.
 
-**Reproducibility.** The agent configuration of every probed build, the per-task results and patches of every probe, the gold validation, the notebook cells, the analysis scripts and the decision rules with their dates are at https://github.com/iHrushikesh/signals-not-rules; competition data is not, per the rules.
+**Reproducibility.** Configuration snapshots, per-task results and patches, validation outcomes, notebook cells, analysis code, trace-derived metrics, and dated decision rules are in [the project repository](https://github.com/iHrushikesh/signals-not-rules). Traces, tasks, and test output contain competition data and are not redistributed.
 
 ## References
 
 Jimenez, C. E., et al. (2024). SWE-bench: Can Language Models Resolve Real-World GitHub Issues? ICLR 2024. arXiv:2310.06770.
+
+Markowitz, E., et al. (2026). [Google - The Gemma 4 Developer Agent Competition](https://www.kaggle.com/competitions/gemma-4-developer-agent). Kaggle. [Dataset documentation](https://www.kaggle.com/competitions/gemma-4-developer-agent/data).
+
 Pan, J., et al. (2024). Training Software Engineering Agents and Verifiers with SWE-Gym. arXiv:2412.21139.
+
 Snell, C., et al. (2024). Scaling LLM Test-Time Compute Optimally Can Be More Effective than Scaling Model Parameters. arXiv:2408.03314.
+
 Sigdel, A., Baral, R. (2026). Schema First Tool APIs for LLM Agents: A Controlled Study of Tool Misuse, Recovery, and Budgeted Performance. arXiv:2603.13404.
+
 Wang, H., Huang, T. (2026). Mingbird: A Local-First Agent Harness Enabling Small Open Models to Complete Real Tasks. arXiv:2610.02001.
+
 Xia, C. S., et al. (2024). Agentless: Demystifying LLM-based Software Engineering Agents. arXiv:2407.01489.
+
 Yang, J., et al. (2024). SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering. NeurIPS 2024. arXiv:2405.15793.
