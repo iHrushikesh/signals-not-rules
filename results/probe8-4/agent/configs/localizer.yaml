@@ -1,0 +1,21 @@
+# Generation config for the localizer (docs/agent_design.md section 11.2, lean config).
+# Thinking budget 0: the first submission showed thinking tokens alone exceed the
+# 5-minute cap on 4x L4, so thinking is spent only where it pays (the coder).
+# include_thoughts false: earlier thoughts are stripped from history.
+# WARNING: keep prompt + max_output_tokens under 32,768; thinking tokens count
+# toward max_output_tokens.
+# Sampling (build 5, Nov 11): the Gemma 4 model card's standard configuration for all
+# use cases (temperature 1.0, top_p 0.95, top_k 64). At temperature 0.2 with thinking
+# off, the localizer repeated one valid call 30 to 135 times in a row in every probe
+# (design doc sections 11.5 and 11.6).
+# WARNING: watch the share of malformed tool calls at this temperature. It was 19% of
+# file and command calls at 0.2 in probe 1 (design doc section 11.4).
+# top_k reaches vLLM in the request body (checked with litellm 1.108.1 and
+# drop_params on; Kaggle's litellm version is unknown).
+temperature: 1.0
+top_p: 0.95
+top_k: 64
+max_output_tokens: 2048
+thinking_config:
+  thinking_budget: 0
+  include_thoughts: false

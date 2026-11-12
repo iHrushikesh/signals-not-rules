@@ -1,0 +1,9 @@
+id,resolved,status,task_s,wall_s,tool_calls,llm_calls,total_tokens,patch_chars,test_exit_code,error,trace_path,agent_s,submit_at_s,max_prompt_tokens,agents_reached
+fastapi_14361,False,SUCCESS,137.1,137.2,22,26,0,511,2,,/kaggle/working/results/traces/trace_fastapi_14361.json,133.4,133.05697965621948,6605,localizer > coder > verifier
+requests_6589,False,SUCCESS,292.6,292.6,24,28,0,438,1,,/kaggle/working/results/traces/trace_requests_6589.json,225.1,224.81352639198303,6514,localizer > coder > verifier
+rich_3894,True,SUCCESS,207.6,207.6,18,25,0,1584,0,,/kaggle/working/results/traces/trace_rich_3894.json,204.7,204.38074564933777,7731,localizer > coder > verifier
+rich_3718,True,SUCCESS,356.0,356.0,58,62,0,766,0,,/kaggle/working/results/traces/trace_rich_3718.json,353.1,352.7670307159424,14610,localizer > coder > verifier
+rich_3064,False,SUCCESS,296.9,297.0,40,44,0,505,1,,/kaggle/working/results/traces/trace_rich_3064.json,293.5,293.1355519294739,8437,localizer > coder > verifier
+fastapi_14873,True,SUCCESS,364.8,364.9,42,45,0,1682,0,,/kaggle/working/results/traces/trace_fastapi_14873.json,348.9,,14701,localizer > coder
+fastapi_14962,False,SUCCESS,365.0,365.1,55,56,0,1578,2,Agent exceeded session timeout (6.0 min),/kaggle/working/results/traces/trace_fastapi_14962.json,355.5,,14810,localizer > coder
+fastapi_14262,False,SUCCESS,364.7,364.8,66,67,0,1854,2,Agent exceeded session timeout (6.0 min),/kaggle/working/results/traces/trace_fastapi_14262.json,359.3,,14566,localizer > coder

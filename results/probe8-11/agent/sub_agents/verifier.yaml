@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/google/adk-python/v1.36.1/src/google/adk/agents/config_schemas/AgentConfig.json
+# Tests the coder's change. Submits if verified; otherwise its reply is saved as review.
+name: verifier
+description: Reproduces the bug and runs the covering test files, then submits or writes a review.
+model: gemma-4-31b-it-qat-w4a16-ct
+instruction: !include ../prompts/verifier.md
+include_contents: none
+output_key: review
+tools:
+  - run_command
+  - read_file
+  - get_status
+  - submit_patch
+# Competition key, not an ADK key: paths are relative to the submission root. The skill adds the
+# tools list_skills, load_skill, load_skill_resource and run_skill_script. Its scripts run
+# inside the task sandbox (docs/agent_design.md section 11.13).
+skills:
+  - skills/verify-fix
+generate_content_config: !include ../configs/verifier.yaml

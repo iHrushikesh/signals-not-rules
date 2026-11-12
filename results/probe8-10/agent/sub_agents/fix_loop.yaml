@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/google/adk-python/v1.36.1/src/google/adk/agents/config_schemas/AgentConfig.json
+# Stage 2: coder then verifier, repeated up to max_iterations times.
+# max_iterations is the study factor: 1 is scaffold S1, 3 is scaffold S2.
+# The loop cannot exit early on its own (no exit tool is registered). The run
+# ends inside the loop when the verifier calls submit_patch and replies in text.
+agent_class: LoopAgent
+name: fix_loop
+description: Alternates between the coder and the verifier until a fix is verified.
+max_iterations: 3
+sub_agents:
+  - config_path: sub_agents/coder.yaml
+  - config_path: sub_agents/verifier.yaml

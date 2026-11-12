@@ -1,0 +1,17 @@
+{
+  "name": "probe8",
+  "created": "2026-11-10",
+  "purpose": "Small subset for quick traced experiments. Too few tasks for significance claims; use it for timings, traces and failure modes.",
+  "source": "Drawn from the 30 tuning tasks not used by E02. No held-out task is included.",
+  "method": "Repo quota 4 fastapi, 3 rich, 1 requests. Exhaustive search for the subset whose patch size, hunk count and problem-statement length quantiles, and whose multi-file, pre-cutoff and multi-test-file shares, are closest to all 129 dev tasks.",
+  "tasks": [
+    "fastapi_14361",
+    "requests_6589",
+    "rich_3894",
+    "rich_3718",
+    "rich_3064",
+    "fastapi_14873",
+    "fastapi_14962",
+    "fastapi_14262"
+  ]
+}

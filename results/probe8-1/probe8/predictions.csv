@@ -1,0 +1,83 @@
+id,prediction
+fastapi_14361,"diff --git a/fastapi/_compat/v2.py b/fastapi/_compat/v2.py
+index 5cd49343..0de49cb0 100644
+--- a/fastapi/_compat/v2.py
++++ b/fastapi/_compat/v2.py
+@@ -307,6 +307,8 @@ def _remap_definitions_and_field_mappings(
+         if model not in model_name_map:
+             continue
+         new_name = model_name_map[model]
++        if not isinstance(schema, dict) or ""$ref"" not in schema:
++            continue
+         old_name = schema[""$ref""].split(""/"")[-1]
+         if old_name in {f""{new_name}-Input"", f""{new_name}-Output""}:
+             continue"
+requests_6589,"diff --git a/src/requests/utils.py b/src/requests/utils.py
+index c3b123ea..f5b97b6d 100644
+--- a/src/requests/utils.py
++++ b/src/requests/utils.py
+@@ -134,7 +134,9 @@ def super_len(o):
+     total_length = None
+     current_position = 0
+ 
+-    if hasattr(o, ""__len__""):
++    if isinstance(o, str):
++        total_length = len(o.encode('utf-8'))
++    elif hasattr(o, ""__len__""):
+         total_length = len(o)
+ 
+     elif hasattr(o, ""len""):"
+rich_3894,"diff --git a/rich/_inspect.py b/rich/_inspect.py
+index 27d65cec..05d5eecc 100644
+--- a/rich/_inspect.py
++++ b/rich/_inspect.py
+@@ -101,6 +101,10 @@ class Inspect(JupyterMixin):
+         signature_text = self.highlighter(_signature)
+ 
+         qualname = name or getattr(obj, ""__qualname__"", name)
++        if not isinstance(qualname, str):
++            qualname = getattr(obj, ""__name__"", name)
++            if not isinstance(qualname, str):
++                qualname = name
+ 
+         # If obj is a module, there may be classes (which are callable) to display
+         if inspect.isclass(obj):"
+rich_3718,"diff --git a/rich/panel.py b/rich/panel.py
+index d411e291..4b2ff01e 100644
+--- a/rich/panel.py
++++ b/rich/panel.py
+@@ -242,6 +242,7 @@ class Panel(JupyterMixin):
+                 box.top,
+                 border_style,
+             )
++            title_text.stylize(style)
+             yield Segment(box.top_left + box.top, border_style)
+             yield from console.render(title_text, child_options.update_width(width - 4))
+             yield Segment(box.top + box.top_right, border_style)"
+rich_3064,"diff --git a/rich/markdown.py b/rich/markdown.py
+index e2cedfaa..472e6000 100644
+--- a/rich/markdown.py
++++ b/rich/markdown.py
+@@ -257,7 +257,7 @@ class TableElement(MarkdownElement):
+         assert self.header is not None
+         assert self.header.row is not None
+         for column in self.header.row.cells:
+-            table.add_column(column.content)
++            table.add_column(column.content, justify=column.justify)
+ 
+         assert self.body is not None
+         for row in self.body.rows:"
+fastapi_14873,NO_PATCH
+fastapi_14962,NO_PATCH
+fastapi_14262,"diff --git a/fastapi/params.py b/fastapi/params.py
+index 2dc04be1..31150e81 100644
+--- a/fastapi/params.py
++++ b/fastapi/params.py
+@@ -766,6 +766,7 @@ class File(Form):  # type: ignore[misc]
+ class Depends:
+     dependency: Optional[Callable[..., Any]] = None
+     use_cache: bool = True
++    scope: str = ""request""
+ 
+ 
+ @dataclass"

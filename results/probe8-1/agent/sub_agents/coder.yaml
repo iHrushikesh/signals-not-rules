@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/google/adk-python/v1.36.1/src/google/adk/agents/config_schemas/AgentConfig.json
+# Edits source files. Holds no submit_patch, so it cannot end the run before verification.
+name: coder
+description: Implements a minimal fix in the source files, guided by the localization and any review.
+model: gemma-4-31b-it-qat-w4a16-ct
+instruction: !include ../prompts/coder.md
+include_contents: none
+output_key: change_summary
+tools:
+  - read_file
+  - edit_file
+  - write_file
+  - run_command
+  - get_status
+generate_content_config: !include ../configs/coder.yaml

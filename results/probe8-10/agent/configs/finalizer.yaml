@@ -1,0 +1,6 @@
+# Generation config for the finalizer: a single submit_patch call, thinking off.
+temperature: 0.0
+max_output_tokens: 1024
+thinking_config:
+  thinking_budget: 0
+  include_thoughts: false

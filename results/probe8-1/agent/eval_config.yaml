@@ -1,0 +1,12 @@
+# Per-task budgets for Stage 1 inference (HARNESS_README section 7.1).
+# About 120 hidden tasks share a 12-hour total. Runs of 13 and 18 hours were
+# still scored, so the working hypothesis is that the 12 hours count agent time
+# only: 120 tasks at 6 minutes is exactly 12 hours (PLAN.md, time budget).
+# WARNING: going above 6 bets that the limit is not enforced at all.
+# WARNING: the time cap is checked between events, so one long LLM call or
+# command can overrun it. Keep max_output_tokens and timeout_seconds modest.
+evaluation:
+  timeout_seconds: 120
+  max_tool_calls: 80
+  max_time_minutes: 6
+  max_turns: 150

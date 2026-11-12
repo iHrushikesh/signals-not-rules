@@ -1,0 +1,28 @@
+PROBE test deps: wheels folder = /kaggle/input/competitions/gemma-4-developer-agent/wheels
+PROBE test deps: 124 wheels in that folder
+PROBE test dep inline-snapshot: wheels found = []
+PROBE test dep inline-snapshot: install with dependencies failed: ERROR: Could not find a version that satisfies the requirement inline-snapshot (from versions: none)
+ERROR: No matching distribution found for inline-snapshot
+PROBE test dep inline-snapshot: FAILED: ERROR: Could not find a version that satisfies the requirement inline-snapshot (from versions: none)
+ERROR: No matching distribution found for inline-snapshot
+PROBE test dep pytest-httpbin: wheels found = []
+PROBE test dep pytest-httpbin: install with dependencies failed: ERROR: Could not find a version that satisfies the requirement pytest-httpbin (from versions: none)
+ERROR: No matching distribution found for pytest-httpbin
+PROBE test dep pytest-httpbin: FAILED: ERROR: Could not find a version that satisfies the requirement pytest-httpbin (from versions: none)
+ERROR: No matching distribution found for pytest-httpbin
+PROBE test deps import check inline_snapshot: ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1324, in _find_and_load_unlocked
+ModuleNotFoundError: No module named 'inline_snapshot'
+PROBE test deps import check pytest_httpbin: ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1324, in _find_and_load_unlocked
+ModuleNotFoundError: No module named 'pytest_httpbin'
+PROBE test deps import check httpbin: ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1324, in _find_and_load_unlocked
+ModuleNotFoundError: No module named 'httpbin'
+PROBE test deps: installed folders = 

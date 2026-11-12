@@ -1,0 +1,268 @@
+id,prediction
+fastapi_14361,"diff --git a/fastapi/_compat/v2.py b/fastapi/_compat/v2.py
+index 5cd49343..51460d1d 100644
+--- a/fastapi/_compat/v2.py
++++ b/fastapi/_compat/v2.py
+@@ -307,6 +307,8 @@ def _remap_definitions_and_field_mappings(
+         if model not in model_name_map:
+             continue
+         new_name = model_name_map[model]
++        if ""$ref"" not in schema:
++            continue
+         old_name = schema[""$ref""].split(""/"")[-1]
+         if old_name in {f""{new_name}-Input"", f""{new_name}-Output""}:
+             continue"
+requests_6589,NO_PATCH
+rich_3894,"diff --git a/rich/_inspect.py b/rich/_inspect.py
+index 27d65cec..05d5eecc 100644
+--- a/rich/_inspect.py
++++ b/rich/_inspect.py
+@@ -101,6 +101,10 @@ class Inspect(JupyterMixin):
+         signature_text = self.highlighter(_signature)
+ 
+         qualname = name or getattr(obj, ""__qualname__"", name)
++        if not isinstance(qualname, str):
++            qualname = getattr(obj, ""__name__"", name)
++            if not isinstance(qualname, str):
++                qualname = name
+ 
+         # If obj is a module, there may be classes (which are callable) to display
+         if inspect.isclass(obj):"
+rich_3718,NO_PATCH
+rich_3064,NO_PATCH
+fastapi_14873,"diff --git a/reproduce_bug.py b/reproduce_bug.py
+new file mode 100644
+index 00000000..36fa4aec
+--- /dev/null
++++ b/reproduce_bug.py
+@@ -0,0 +1,49 @@
++from fastapi import FastAPI
++import asyncio
++
++def s_start():
++    print(""SYNC START"", flush=True)
++
++async def main():
++    # The issue report says:
++    # Startup event is not called because APIRouter.on_startup is set in APIRouter.__init__ 
++    # before calling super().__init__ and is overridden by router.__init__
++    # FastAPI inherits from APIRouter (which inherits from routing.Router)
++    
++    app = FastAPI(on_startup=[s_start])
++    
++    # To trigger startup events, we need to run the app. 
++    # Since we are in a script, we can use a lifespan-like trigger or just 
++    # use a TestClient or similar. 
++    # However, the simplest way to check if the event is registered is to 
++    # check the app's lifespan_context or the internal on_startup list.
++    
++    print(f""app.on_startup: {app.on_startup}"")
++    
++    # Let's try to actually run it with a mock lifespan trigger if possible, 
++    # or just check if the list is empty.
++    # In the provided example, the user says ""Startup event is not called"".
++    
++    # Let's try to run it using a minimal ASGI server call or just check the state.
++    # If the bug is that super().__init__ overrides it, then app.on_startup 
++    # might be empty or not what we expect.
++    
++    # Wait, if APIRouter.__init__ sets self.on_startup = [...], 
++    # and then super().__init__(...) is called, and super().__init__ 
++    # (which is starlette.routing.Router.__init__) also sets self.on_startup...
++    # Let's check starlette's Router.__init__.
++    
++    # Actually, the user provided a snippet. Let's run it and see if ""SYNC START"" prints.
++    # But we need a server to run it.
++    
++    # Let's use a simpler check:
++    # If the bug is that it's overridden, then app.on_startup might be different.
++    
++    # Let's try to run it with a small ASGI runner.
++    from fastapi.testclient import TestClient
++    with TestClient(app) as client:
++        # TestClient triggers startup/shutdown events.
++        pass
++
++if __name__ == ""__main__"":
++    asyncio.run(main())"
+fastapi_14962,"diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..114124ac
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,25 @@
++from fastapi import FastAPI
++from pydantic import BaseModel
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++class Item(BaseModel):
++    name: str
++    price: float
++
++@app.get(""/item"", response_model=Item)
++def get_item():
++    return Item(name=""Test Item"", price=10.5)
++
++client = TestClient(app)
++
++def test_item():
++    response = client.get(""/item"")
++    print(f""Status: {response.status_code}"")
++    print(f""Body: {response.json()}"")
++    assert response.status_code == 200
++    assert response.json() == {""name"": ""Test Item"", ""price"": 10.5}
++
++if __name__ == ""__main__"":
++    test_item()"
+fastapi_14262,"diff --git a/fastapi/dependencies/models.py b/fastapi/dependencies/models.py
+index 418c1172..b498cfed 100644
+--- a/fastapi/dependencies/models.py
++++ b/fastapi/dependencies/models.py
+@@ -30,6 +30,7 @@ class Dependant:
+     security_scopes_param_name: Optional[str] = None
+     security_scopes: Optional[List[str]] = None
+     use_cache: bool = True
++    scope: str = ""request""
+     path: Optional[str] = None
+     cache_key: Tuple[Optional[Callable[..., Any]], Tuple[str, ...]] = field(init=False)
+ 
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 6477a2cb..c298d690 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -237,6 +237,7 @@ def get_dependant(
+     name: Optional[str] = None,
+     security_scopes: Optional[List[str]] = None,
+     use_cache: bool = True,
++    scope: str = ""request"",
+ ) -> Dependant:
+     dependant = Dependant(
+         call=call,
+@@ -244,6 +245,7 @@ def get_dependant(
+         path=path,
+         security_scopes=security_scopes,
+         use_cache=use_cache,
++        scope=scope,
+     )
+     path_param_names = get_path_param_names(path)
+     endpoint_signature = get_typed_signature(call)
+@@ -276,6 +278,7 @@ def get_dependant(
+                 name=param_name,
+                 security_scopes=use_security_scopes,
+                 use_cache=param_details.depends.use_cache,
++                scope=param_details.depends.scope,
+             )
+             dependant.dependencies.append(sub_dependant)
+             continue
+@@ -556,12 +559,21 @@ def is_gen_callable(call: Callable[..., Any]) -> bool:
+ 
+ 
+ async def solve_generator(
+-    *, call: Callable[..., Any], stack: AsyncExitStack, sub_values: Dict[str, Any]
++    *,
++    call: Callable[..., Any],
++    request_stack: AsyncExitStack,
++    function_stack: AsyncExitStack,
++    sub_values: Dict[str, Any],
++    scope: str = ""request"",
+ ) -> Any:
+     if is_gen_callable(call):
+         cm = contextmanager_in_threadpool(contextmanager(call)(**sub_values))
+     elif is_async_gen_callable(call):
+         cm = asynccontextmanager(call)(**sub_values)
++    else:
++        # This should not happen if solve_dependencies is correct
++        raise RuntimeError(""Callable is not a generator"")
++    stack = request_stack if scope == ""request"" else function_stack
+     return await stack.enter_async_context(cm)
+ 
+ 
+@@ -637,7 +649,11 @@ async def solve_dependencies(
+             solved = dependency_cache[sub_dependant.cache_key]
+         elif is_gen_callable(call) or is_async_gen_callable(call):
+             solved = await solve_generator(
+-                call=call, stack=async_exit_stack, sub_values=solved_result.values
++                call=call,
++                request_stack=async_exit_stack,
++                function_stack=function_exit_stack,
++                sub_values=solved_result.values,
++                scope=use_sub_dependant.scope,
+             )
+         elif is_coroutine_callable(call):
+             solved = await call(**solved_result.values)
+diff --git a/fastapi/params.py b/fastapi/params.py
+index 2dc04be1..31150e81 100644
+--- a/fastapi/params.py
++++ b/fastapi/params.py
+@@ -766,6 +766,7 @@ class File(Form):  # type: ignore[misc]
+ class Depends:
+     dependency: Optional[Callable[..., Any]] = None
+     use_cache: bool = True
++    scope: str = ""request""
+ 
+ 
+ @dataclass
+diff --git a/reproduce_bug.py b/reproduce_bug.py
+new file mode 100644
+index 00000000..0e63ea1e
+--- /dev/null
++++ b/reproduce_bug.py
+@@ -0,0 +1,30 @@
++import asyncio
++from fastapi import FastAPI, Depends
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++exit_log = []
++
++async def dependency():
++    exit_log.append(""start"")
++    try:
++        yield ""value""
++    finally:
++        exit_log.append(""exit"")
++
++@app.get(""/"")
++async def root(val: str = Depends(dependency, scope=""function"")):
++    return {""message"": ""hello"", ""val"": val}
++
++client = TestClient(app)
++
++def test_dependency_scope_error():
++    try:
++        client.get(""/"")
++    except TypeError as e:
++        print(f""Caught expected TypeError: {e}"")
++    except Exception as e:
++        print(f""Caught unexpected exception: {type(e).__name__}: {e}"")
++
++if __name__ == ""__main__"":
++    test_dependency_scope_error()
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..579436f4
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,20 @@
++from fastapi import FastAPI, Depends
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++async def dependency():
++    yield ""value""
++
++@app.get(""/"")
++async def root(val: str = Depends(dependency, scope=""function"")):
++    return {""message"": ""hello""}
++
++client = TestClient(app)
++try:
++    client.get(""/"")
++    print(""Success"")
++except TypeError as e:
++    print(f""TypeError: {e}"")
++except Exception as e:
++    print(f""Other exception: {type(e).__name__}: {e}"")"

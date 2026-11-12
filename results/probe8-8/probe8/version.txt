@@ -1,0 +1,4 @@
+==============================================================================
+PROBE NOTEBOOK : probe8 notebook v4 (2026-11-11): test-deps log, version banner
+AGENT BUILD    : fingerprint 94a538c3  (folder /kaggle/input/datasets/hrushi/agent-submission)
+==============================================================================

@@ -1,0 +1,272 @@
+id,prediction
+fastapi_14361,"diff --git a/fastapi/_compat/v2.py b/fastapi/_compat/v2.py
+index 5cd49343..51460d1d 100644
+--- a/fastapi/_compat/v2.py
++++ b/fastapi/_compat/v2.py
+@@ -307,6 +307,8 @@ def _remap_definitions_and_field_mappings(
+         if model not in model_name_map:
+             continue
+         new_name = model_name_map[model]
++        if ""$ref"" not in schema:
++            continue
+         old_name = schema[""$ref""].split(""/"")[-1]
+         if old_name in {f""{new_name}-Input"", f""{new_name}-Output""}:
+             continue"
+requests_6589,"diff --git a/src/requests/utils.py b/src/requests/utils.py
+index c3b123ea..9027ab18 100644
+--- a/src/requests/utils.py
++++ b/src/requests/utils.py
+@@ -135,7 +135,10 @@ def super_len(o):
+     current_position = 0
+ 
+     if hasattr(o, ""__len__""):
+-        total_length = len(o)
++        if isinstance(o, str):
++            total_length = len(o.encode(""utf-8""))
++        else:
++            total_length = len(o)
+ 
+     elif hasattr(o, ""len""):
+         total_length = o.len"
+rich_3894,NO_PATCH
+rich_3718,"diff --git a/rich/panel.py b/rich/panel.py
+index d411e291..11e07195 100644
+--- a/rich/panel.py
++++ b/rich/panel.py
+@@ -206,7 +206,7 @@ class Panel(JupyterMixin):
+ 
+         title_text = self._title
+         if title_text is not None:
+-            title_text.stylize_before(partial_border_style)
++            title_text.stylize_before(border_style)
+ 
+         child_width = (
+             width - 2
+@@ -255,7 +255,7 @@ class Panel(JupyterMixin):
+ 
+         subtitle_text = self._subtitle
+         if subtitle_text is not None:
+-            subtitle_text.stylize_before(partial_border_style)
++            subtitle_text.stylize_before(border_style)
+ 
+         if subtitle_text is None or width <= 4:
+             yield Segment(box.get_bottom([width - 2]), border_style)"
+rich_3064,"diff --git a/rich/markdown.py b/rich/markdown.py
+index e2cedfaa..472e6000 100644
+--- a/rich/markdown.py
++++ b/rich/markdown.py
+@@ -257,7 +257,7 @@ class TableElement(MarkdownElement):
+         assert self.header is not None
+         assert self.header.row is not None
+         for column in self.header.row.cells:
+-            table.add_column(column.content)
++            table.add_column(column.content, justify=column.justify)
+ 
+         assert self.body is not None
+         for row in self.body.rows:"
+fastapi_14873,"diff --git a/fastapi/routing.py b/fastapi/routing.py
+index 0b4d2887..91e924e3 100644
+--- a/fastapi/routing.py
++++ b/fastapi/routing.py
+@@ -952,16 +952,6 @@ class APIRouter(routing.Router):
+             ),
+         ] = Default(generate_unique_id),
+     ) -> None:
+-        # Handle on_startup/on_shutdown locally since Starlette removed support
+-        # Ref: https://github.com/Kludex/starlette/pull/3117
+-        # TODO: deprecate this once the lifespan (or alternative) interface is improved
+-        self.on_startup: list[Callable[[], Any]] = (
+-            [] if on_startup is None else list(on_startup)
+-        )
+-        self.on_shutdown: list[Callable[[], Any]] = (
+-            [] if on_shutdown is None else list(on_shutdown)
+-        )
+-
+         # Determine the lifespan context to use
+         if lifespan is None:
+             # Use the default lifespan that runs on_startup/on_shutdown handlers
+@@ -980,6 +970,17 @@ class APIRouter(routing.Router):
+             default=default,
+             lifespan=lifespan_context,
+         )
++
++        # Handle on_startup/on_shutdown locally since Starlette removed support
++        # Ref: https://github.com/Kludex/starlette/pull/3117
++        # TODO: deprecate this once the lifespan (or alternative) interface is improved
++        self.on_startup: list[Callable[[], Any]] = (
++            [] if on_startup is None else list(on_startup)
++        )
++        self.on_shutdown: list[Callable[[], Any]] = (
++            [] if on_shutdown is None else list(on_shutdown)
++        )
++
+         if prefix:
+             assert prefix.startswith(""/""), ""A path prefix must start with '/'""
+             assert not prefix.endswith(""/""), ("
+fastapi_14962,"diff --git a/fastapi/_compat/__init__.py b/fastapi/_compat/__init__.py
+index 4581c38c..32d6d775 100644
+--- a/fastapi/_compat/__init__.py
++++ b/fastapi/_compat/__init__.py
+@@ -37,4 +37,5 @@ from .v2 import is_scalar_field as is_scalar_field
+ from .v2 import serialize_sequence_value as serialize_sequence_value
+ from .v2 import (
+     with_info_plain_validator_function as with_info_plain_validator_function,
++    _regenerate_error_with_loc as _regenerate_error_with_loc,
+ )
+diff --git a/fastapi/routing.py b/fastapi/routing.py
+index ea82ab14..041d6faa 100644
+--- a/fastapi/routing.py
++++ b/fastapi/routing.py
+@@ -33,6 +33,7 @@ from fastapi._compat import (
+     ModelField,
+     Undefined,
+     lenient_issubclass,
++    _regenerate_error_with_loc,
+ )
+ from fastapi.datastructures import Default, DefaultPlaceholder
+ from fastapi.dependencies.models import Dependant
+@@ -46,6 +47,7 @@ from fastapi.dependencies.utils import (
+     solve_dependencies,
+ )
+ from fastapi.encoders import jsonable_encoder
++from pydantic import ValidationError as ValidationError
+ from fastapi.exceptions import (
+     EndpointContext,
+     FastAPIError,
+@@ -274,28 +276,55 @@ async def serialize_response(
+ ) -> Any:
+     if field:
+         if is_coroutine:
+-            value, errors = field.validate(response_content, {}, loc=(""response"",))
++            try:
++                return field.serialize(
++                    response_content,
++                    include=include,
++                    exclude=exclude,
++                    by_alias=by_alias,
++                    exclude_unset=exclude_unset,
++                    exclude_defaults=exclude_defaults,
++                    exclude_none=exclude_none,
++                )
++            except ValidationError as exc:
++                ctx = endpoint_ctx or EndpointContext()
++                raise ResponseValidationError(
++                    errors=_regenerate_error_with_loc(
++                        errors=exc.errors(include_url=False), loc_prefix=(""response"",)
++                    ),
++                    body=response_content,
++                    endpoint_ctx=ctx,
++                )
+         else:
+-            value, errors = await run_in_threadpool(
+-                field.validate, response_content, {}, loc=(""response"",)
+-            )
+-        if errors:
+-            ctx = endpoint_ctx or EndpointContext()
+-            raise ResponseValidationError(
+-                errors=errors,
+-                body=response_content,
+-                endpoint_ctx=ctx,
+-            )
+-
+-        return field.serialize(
+-            value,
+-            include=include,
+-            exclude=exclude,
+-            by_alias=by_alias,
+-            exclude_unset=exclude_unset,
+-            exclude_defaults=exclude_defaults,
+-            exclude_none=exclude_none,
+-        )
++            # This is the slow path, where we run in a threadpool.
++            # We still want to perform validation and serialization.
++            def _validate_and_serialize():
++                try:
++                    return field.serialize(
++                        response_content,
++                        include=include,
++                        exclude=exclude,
++                        by_alias=by_alias,
++                        exclude_unset=exclude_unset,
++                        exclude_defaults=exclude_defaults,
++                        exclude_none=exclude_none,
++                    )
++                except ValidationError as exc:
++                    # We must re-raise this as a ResponseValidationError.
++                    # Since we are in a threadpool, we return the exception.
++                    return exc
++
++            result = await run_in_threadpool(_validate_and_serialize)
++            if isinstance(result, ValidationError):
++                ctx = endpoint_ctx or EndpointContext()
++                raise ResponseValidationError(
++                    errors=_regenerate_error_with_loc(
++                        errors=result.errors(include_url=False), loc_prefix=(""response"",)
++                    ),
++                    body=response_content,
++                    endpoint_ctx=ctx,
++                )
++            return result
+ 
+     else:
+         return jsonable_encoder(response_content)"
+fastapi_14262,"diff --git a/fastapi/dependencies/models.py b/fastapi/dependencies/models.py
+index 418c1172..b498cfed 100644
+--- a/fastapi/dependencies/models.py
++++ b/fastapi/dependencies/models.py
+@@ -30,6 +30,7 @@ class Dependant:
+     security_scopes_param_name: Optional[str] = None
+     security_scopes: Optional[List[str]] = None
+     use_cache: bool = True
++    scope: str = ""request""
+     path: Optional[str] = None
+     cache_key: Tuple[Optional[Callable[..., Any]], Tuple[str, ...]] = field(init=False)
+ 
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 6477a2cb..af199db3 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -237,6 +237,7 @@ def get_dependant(
+     name: Optional[str] = None,
+     security_scopes: Optional[List[str]] = None,
+     use_cache: bool = True,
++    scope: str = ""request"",
+ ) -> Dependant:
+     dependant = Dependant(
+         call=call,
+@@ -244,6 +245,7 @@ def get_dependant(
+         path=path,
+         security_scopes=security_scopes,
+         use_cache=use_cache,
++        scope=scope,
+     )
+     path_param_names = get_path_param_names(path)
+     endpoint_signature = get_typed_signature(call)
+@@ -276,6 +278,7 @@ def get_dependant(
+                 name=param_name,
+                 security_scopes=use_security_scopes,
+                 use_cache=param_details.depends.use_cache,
++                scope=param_details.depends.scope,
+             )
+             dependant.dependencies.append(sub_dependant)
+             continue
+@@ -616,6 +619,7 @@ async def solve_dependencies(
+                 call=call,
+                 name=sub_dependant.name,
+                 security_scopes=sub_dependant.security_scopes,
++                scope=sub_dependant.scope,
+             )
+ 
+         solved_result = await solve_dependencies(
+diff --git a/fastapi/params.py b/fastapi/params.py
+index 2dc04be1..31150e81 100644
+--- a/fastapi/params.py
++++ b/fastapi/params.py
+@@ -766,6 +766,7 @@ class File(Form):  # type: ignore[misc]
+ class Depends:
+     dependency: Optional[Callable[..., Any]] = None
+     use_cache: bool = True
++    scope: str = ""request""
+ 
+ 
+ @dataclass"

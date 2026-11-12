@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/google/adk-python/v1.36.1/src/google/adk/agents/config_schemas/AgentConfig.json
+# Root of the fix pipeline (docs/agent_design.md section 3).
+# Order: localizer, then the fix-and-verify loop, then the finalizer.
+# The run ends when an agent calls submit_patch and then replies in text,
+# so the finalizer only runs if the loop never produced a verified fix.
+agent_class: SequentialAgent
+name: fix_pipeline
+description: Localizes the bug, fixes and verifies it in a loop, and always submits a patch.
+sub_agents:
+  - config_path: sub_agents/localizer.yaml
+  - config_path: sub_agents/fix_loop.yaml
+  - config_path: sub_agents/finalizer.yaml

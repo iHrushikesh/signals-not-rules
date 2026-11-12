@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/google/adk-python/v1.36.1/src/google/adk/agents/config_schemas/AgentConfig.json
+# Stage 3: runs only if the loop used every iteration without a verified fix.
+# Always submits, so the root never finishes without a submission and the
+# harness never sends restart nudges.
+name: finalizer
+description: Submits the current working tree when the loop ends without a verified fix.
+model: gemma-4-31b-it-qat-w4a16-ct
+instruction: !include ../prompts/finalizer.md
+include_contents: none
+tools:
+  - submit_patch
+  - get_status
+generate_content_config: !include ../configs/finalizer.yaml

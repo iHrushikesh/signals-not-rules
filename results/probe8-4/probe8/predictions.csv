@@ -1,0 +1,317 @@
+id,prediction
+fastapi_14361,"diff --git a/fastapi/_compat/v2.py b/fastapi/_compat/v2.py
+index 5cd49343..0de49cb0 100644
+--- a/fastapi/_compat/v2.py
++++ b/fastapi/_compat/v2.py
+@@ -307,6 +307,8 @@ def _remap_definitions_and_field_mappings(
+         if model not in model_name_map:
+             continue
+         new_name = model_name_map[model]
++        if not isinstance(schema, dict) or ""$ref"" not in schema:
++            continue
+         old_name = schema[""$ref""].split(""/"")[-1]
+         if old_name in {f""{new_name}-Input"", f""{new_name}-Output""}:
+             continue"
+requests_6589,"diff --git a/src/requests/utils.py b/src/requests/utils.py
+index c3b123ea..9027ab18 100644
+--- a/src/requests/utils.py
++++ b/src/requests/utils.py
+@@ -135,7 +135,10 @@ def super_len(o):
+     current_position = 0
+ 
+     if hasattr(o, ""__len__""):
+-        total_length = len(o)
++        if isinstance(o, str):
++            total_length = len(o.encode(""utf-8""))
++        else:
++            total_length = len(o)
+ 
+     elif hasattr(o, ""len""):
+         total_length = o.len"
+rich_3894,"diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..abf95d6b
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,25 @@
++from functools import lru_cache
++from rich import inspect
++
++@lru_cache
++class Klaas:
++    __slots__ = (""__qualname__"",)
++
++if __name__ == ""__main__"":
++    try:
++        print(""Testing inspect(Klaas.__qualname__)"")
++        inspect(Klaas.__qualname__)
++        print(""Success 1"")
++    except Exception as e:
++        print(f""Failure 1: {e}"")
++        import traceback
++        traceback.print_exc()
++
++    try:
++        print(""\nTesting inspect(Klaas, all=True)"")
++        inspect(Klaas, all=True)
++        print(""Success 2"")
++    except Exception as e:
++        print(f""Failure 2: {e}"")
++        import traceback
++        traceback.print_exc()
+diff --git a/reproduce_bug.py b/reproduce_bug.py
+new file mode 100644
+index 00000000..72be3da7
+--- /dev/null
++++ b/reproduce_bug.py
+@@ -0,0 +1,30 @@
++from functools import lru_cache
++from rich import inspect
++from rich._inspect import Inspect
++
++@lru_cache
++class Klaas:
++    __slots__ = (""__qualname__"",)
++
++if __name__ == ""__main__"":
++    # The error ""Only str or Text can be appended to Text""
++    # can happen in _get_signature if qualname is not a string, 
++    # and then we try to use that result in Text.assemble or later.
++    
++    # Let's try to force a non-string qualname into _get_signature.
++    ins = Inspect(None)
++    
++    # We can't easily set __qualname__ on a function, but we can mock the object.
++    class MockObj:
++        def __getattr__(self, name):
++            if name == ""__qualname__"":
++                return 123 # Non-string
++            return None
++        def __call__(self):
++            pass
++    
++    try:
++        sig = ins._get_signature(""name"", MockObj())
++        print(f""Succeeded: {sig}"")
++    except Exception as e:
++        print(f""Failed: {e}"")
+diff --git a/rich/_inspect.py b/rich/_inspect.py
+index 27d65cec..c5431ee0 100644
+--- a/rich/_inspect.py
++++ b/rich/_inspect.py
+@@ -100,7 +100,13 @@ class Inspect(JupyterMixin):
+             callable_name.stylize(f""link file://{source_filename}"")
+         signature_text = self.highlighter(_signature)
+ 
+-        qualname = name or getattr(obj, ""__qualname__"", name)
++        qualname = name
++        if not qualname:
++            qualname = getattr(obj, ""__qualname__"", name)
++            if not isinstance(qualname, str):
++                qualname = getattr(obj, ""__name__"", name)
++                if not isinstance(qualname, str):
++                    qualname = name
+ 
+         # If obj is a module, there may be classes (which are callable) to display
+         if inspect.isclass(obj):
+@@ -251,6 +257,8 @@ def get_object_types_mro_as_strings(obj: object) -> Collection[str]:
+     """"""
+     return [
+         f'{getattr(type_, ""__module__"", """")}.{getattr(type_, ""__qualname__"", """")}'
++        if isinstance(getattr(type_, ""__qualname__"", """"), str)
++        else f'{getattr(type_, ""__module__"", """")}.{getattr(type_, ""__name__"", """")}'
+         for type_ in get_object_types_mro(obj)
+     ]"
+rich_3718,"diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..2eceb1ec
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,6 @@
++from rich.console import Console
++from rich.panel import Panel
++
++console = Console(force_terminal=True)
++panel = Panel(""Content"", title=""Title"", subtitle=""Subtitle"", style=""on blue"", border_style=""red"")
++console.print(panel)
+diff --git a/rich/panel.py b/rich/panel.py
+index d411e291..11e07195 100644
+--- a/rich/panel.py
++++ b/rich/panel.py
+@@ -206,7 +206,7 @@ class Panel(JupyterMixin):
+ 
+         title_text = self._title
+         if title_text is not None:
+-            title_text.stylize_before(partial_border_style)
++            title_text.stylize_before(border_style)
+ 
+         child_width = (
+             width - 2
+@@ -255,7 +255,7 @@ class Panel(JupyterMixin):
+ 
+         subtitle_text = self._subtitle
+         if subtitle_text is not None:
+-            subtitle_text.stylize_before(partial_border_style)
++            subtitle_text.stylize_before(border_style)
+ 
+         if subtitle_text is None or width <= 4:
+             yield Segment(box.get_bottom([width - 2]), border_style)"
+rich_3064,"diff --git a/rich/markdown.py b/rich/markdown.py
+index e2cedfaa..40616b25 100644
+--- a/rich/markdown.py
++++ b/rich/markdown.py
+@@ -254,15 +254,17 @@ class TableElement(MarkdownElement):
+     ) -> RenderResult:
+         table = Table(box=box.SIMPLE_HEAVY)
+ 
+-        assert self.header is not None
+-        assert self.header.row is not None
+-        for column in self.header.row.cells:
+-            table.add_column(column.content)
+-
+-        assert self.body is not None
+-        for row in self.body.rows:
+-            row_content = [element.content for element in row.cells]
+-            table.add_row(*row_content)
++        if self.header is not None and self.header.row is not None:
++            for column in self.header.row.cells:
++                table.add_column(column.content)
++        elif self.body is not None and self.body.rows:
++            for i in range(len(self.body.rows[0].cells)):
++                table.add_column("""")
++
++        if self.body is not None:
++            for row in self.body.rows:
++                row_content = [element.content for element in row.cells]
++                table.add_row(*row_content)
+ 
+         yield table"
+fastapi_14873,NO_PATCH
+fastapi_14962,NO_PATCH
+fastapi_14262,"diff --git a/fastapi/dependencies/models.py b/fastapi/dependencies/models.py
+index 418c1172..b498cfed 100644
+--- a/fastapi/dependencies/models.py
++++ b/fastapi/dependencies/models.py
+@@ -30,6 +30,7 @@ class Dependant:
+     security_scopes_param_name: Optional[str] = None
+     security_scopes: Optional[List[str]] = None
+     use_cache: bool = True
++    scope: str = ""request""
+     path: Optional[str] = None
+     cache_key: Tuple[Optional[Callable[..., Any]], Tuple[str, ...]] = field(init=False)
+ 
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 6477a2cb..01f39b5b 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -237,6 +237,7 @@ def get_dependant(
+     name: Optional[str] = None,
+     security_scopes: Optional[List[str]] = None,
+     use_cache: bool = True,
++    scope: str = ""request"",
+ ) -> Dependant:
+     dependant = Dependant(
+         call=call,
+@@ -244,6 +245,7 @@ def get_dependant(
+         path=path,
+         security_scopes=security_scopes,
+         use_cache=use_cache,
++        scope=scope,
+     )
+     path_param_names = get_path_param_names(path)
+     endpoint_signature = get_typed_signature(call)
+@@ -276,6 +278,7 @@ def get_dependant(
+                 name=param_name,
+                 security_scopes=use_security_scopes,
+                 use_cache=param_details.depends.use_cache,
++                scope=param_details.depends.scope,
+             )
+             dependant.dependencies.append(sub_dependant)
+             continue
+@@ -556,7 +559,10 @@ def is_gen_callable(call: Callable[..., Any]) -> bool:
+ 
+ 
+ async def solve_generator(
+-    *, call: Callable[..., Any], stack: AsyncExitStack, sub_values: Dict[str, Any]
++    *,
++    call: Callable[..., Any],
++    stack: AsyncExitStack,
++    sub_values: Dict[str, Any],
+ ) -> Any:
+     if is_gen_callable(call):
+         cm = contextmanager_in_threadpool(contextmanager(call)(**sub_values))
+@@ -584,6 +590,7 @@ async def solve_dependencies(
+     dependency_overrides_provider: Optional[Any] = None,
+     dependency_cache: Optional[Dict[Tuple[Callable[..., Any], Tuple[str]], Any]] = None,
+     async_exit_stack: AsyncExitStack,
++    async_exit_stack_function: AsyncExitStack,
+     embed_body_fields: bool,
+ ) -> SolvedDependency:
+     values: Dict[str, Any] = {}
+@@ -627,6 +634,7 @@ async def solve_dependencies(
+             dependency_overrides_provider=dependency_overrides_provider,
+             dependency_cache=dependency_cache,
+             async_exit_stack=async_exit_stack,
++            async_exit_stack_function=async_exit_stack_function,
+             embed_body_fields=embed_body_fields,
+         )
+         background_tasks = solved_result.background_tasks
+@@ -636,8 +644,9 @@ async def solve_dependencies(
+         if sub_dependant.use_cache and sub_dependant.cache_key in dependency_cache:
+             solved = dependency_cache[sub_dependant.cache_key]
+         elif is_gen_callable(call) or is_async_gen_callable(call):
++            stack = async_exit_stack if use_sub_dependant.scope == ""request"" else async_exit_stack_function
+             solved = await solve_generator(
+-                call=call, stack=async_exit_stack, sub_values=solved_result.values
++                call=call, stack=stack, sub_values=solved_result.values
+             )
+         elif is_coroutine_callable(call):
+             solved = await call(**solved_result.values)
+diff --git a/fastapi/params.py b/fastapi/params.py
+index 2dc04be1..31150e81 100644
+--- a/fastapi/params.py
++++ b/fastapi/params.py
+@@ -766,6 +766,7 @@ class File(Form):  # type: ignore[misc]
+ class Depends:
+     dependency: Optional[Callable[..., Any]] = None
+     use_cache: bool = True
++    scope: str = ""request""
+ 
+ 
+ @dataclass
+diff --git a/fastapi/routing.py b/fastapi/routing.py
+index 0b59d250..ca137634 100644
+--- a/fastapi/routing.py
++++ b/fastapi/routing.py
+@@ -106,11 +106,13 @@ def request_response(
+             response_awaited = False
+             async with AsyncExitStack() as stack:
+                 scope[""fastapi_inner_astack""] = stack
+-                # Same as in Starlette
+-                response = await f(request)
+-                await response(scope, receive, send)
+-                # Continues customization
+-                response_awaited = True
++                async with AsyncExitStack() as stack_function:
++                    scope[""fastapi_inner_astack_function""] = stack_function
++                    # Same as in Starlette
++                    response = await f(request)
++                    await response(scope, receive, send)
++                    # Continues customization
++                    response_awaited = True
+             if not response_awaited:
+                 raise FastAPIError(
+                     ""Response not awaited. There's a high chance that the ""
+@@ -143,8 +145,10 @@ def websocket_session(
+             # Starts customization
+             async with AsyncExitStack() as stack:
+                 scope[""fastapi_inner_astack""] = stack
+-                # Same as in Starlette
+-                await func(session)
++                async with AsyncExitStack() as stack_function:
++                    scope[""fastapi_inner_astack_function""] = stack_function
++                    # Same as in Starlette
++                    await func(session)
+ 
+         # Same as in Starlette
+         await wrap_app_handling_exceptions(app, session)(scope, receive, send)"

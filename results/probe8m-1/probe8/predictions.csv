@@ -1,0 +1,193 @@
+id,prediction
+rich_3061,NO_PATCH
+rich_3470,"diff --git a/rich/console.py b/rich/console.py
+index cdfac282..f213182a 100644
+--- a/rich/console.py
++++ b/rich/console.py
+@@ -874,8 +874,8 @@ class Console:
+             str: Console output.
+         """"""
+         render_result = self._render_buffer(self._buffer)
+-        del self._buffer[:]
+         self._exit_buffer()
++        del self._buffer[:]
+         return render_result
+ 
+     def push_theme(self, theme: Theme, *, inherit: bool = True) -> None:"
+rich_3521,"diff --git a/rich/segment.py b/rich/segment.py
+index 5986aac7..bb024d15 100644
+--- a/rich/segment.py
++++ b/rich/segment.py
+@@ -129,9 +129,7 @@ class Segment(NamedTuple):
+ 
+         cell_size = get_character_cell_size
+ 
+-        pos = int((cut / cell_length) * (len(text))) - 1
+-        if pos < 0:
+-            pos = 0
++        pos = 0
+ 
+         before = text[:pos]
+         cell_pos = cell_len(before)"
+rich_3894,"diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..50d8ad5f
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,21 @@
++from functools import lru_cache
++from rich import inspect
++
++@lru_cache
++class Klaas:
++    __slots__ = (""__qualname__"",)
++
++if __name__ == ""__main__"":
++    try:
++        print(""Testing inspect(Klaas.__qualname__)..."")
++        inspect(Klaas.__qualname__)
++        print(""Success!"")
++    except Exception as e:
++        print(f""Failed: {e}"")
++
++    try:
++        print(""Testing inspect(Klaas, all=True)..."")
++        inspect(Klaas, all=True)
++        print(""Success!"")
++    except Exception as e:
++        print(f""Failed: {e}"")
+diff --git a/rich/_inspect.py b/rich/_inspect.py
+index 27d65cec..cac6d68f 100644
+--- a/rich/_inspect.py
++++ b/rich/_inspect.py
+@@ -100,7 +100,17 @@ class Inspect(JupyterMixin):
+             callable_name.stylize(f""link file://{source_filename}"")
+         signature_text = self.highlighter(_signature)
+ 
+-        qualname = name or getattr(obj, ""__qualname__"", name)
++        qualname = name
++        if not qualname:
++            val = getattr(obj, ""__qualname__"", None)
++            if isinstance(val, str):
++                qualname = val
++            else:
++                val = getattr(obj, ""__name__"", None)
++                if isinstance(val, str):
++                    qualname = val
++                else:
++                    qualname = name
+ 
+         # If obj is a module, there may be classes (which are callable) to display
+         if inspect.isclass(obj):
+@@ -249,10 +259,16 @@ def get_object_types_mro_as_strings(obj: object) -> Collection[str]:
+     Examples:
+         `object_types_mro_as_strings(JSONDecoder)` will return `['json.decoder.JSONDecoder', 'builtins.object']`
+     """"""
+-    return [
+-        f'{getattr(type_, ""__module__"", """")}.{getattr(type_, ""__qualname__"", """")}'
+-        for type_ in get_object_types_mro(obj)
+-    ]
++    mro_strings = []
++    for type_ in get_object_types_mro(obj):
++        module = getattr(type_, ""__module__"", """")
++        qualname = getattr(type_, ""__qualname__"", """")
++        if not isinstance(qualname, str):
++            qualname = getattr(type_, ""__name__"", """")
++            if not isinstance(qualname, str):
++                qualname = """"
++        mro_strings.append(f""{module}.{qualname}"" if module else qualname)
++    return mro_strings
+ 
+ 
+ def is_object_one_of_types("
+rich_4006,"diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..d39e39ea
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,29 @@
++from rich.cells import split_graphemes
++import time
++import signal
++
++def handler(signum, frame):
++    raise Exception(""Timeout reached!"")
++
++signal.signal(signal.SIGALRM, handler)
++signal.alarm(2)
++
++test_cases = [
++    ""\u200d"",
++    ""\ufe0f"",
++    ""\u200d\u200d"",
++    ""\ufe0f\ufe0f"",
++    ""\u200d\ufe0f"",
++    ""\ufe0f\u200d"",
++    ""\u0000"",
++    ""\u0001"",
++    ""\u200d\u0000"",
++]
++
++for tc in test_cases:
++    print(f""Testing {repr(tc)}..."", end="" "")
++    try:
++        signal.alarm(2)
++        print(split_graphemes(tc))
++    except Exception as e:
++        print(f""Failed: {e}"")"
+fastapi_13920,NO_PATCH
+fastapi_14372,"diff --git a/fastapi/params.py b/fastapi/params.py
+index 6a58d580..2792beb8 100644
+--- a/fastapi/params.py
++++ b/fastapi/params.py
+@@ -762,13 +762,17 @@ class File(Form):  # type: ignore[misc]
+         )
+ 
+ 
+-@dataclass
++@dataclass(frozen=True)
+ class Depends:
+     dependency: Optional[Callable[..., Any]] = None
+     use_cache: bool = True
+     scope: Union[Literal[""function"", ""request""], None] = None
+ 
+ 
+-@dataclass
++@dataclass(frozen=True)
+ class Security(Depends):
+     scopes: Optional[Sequence[str]] = None
++
++    def __post_init__(self):
++        if self.scopes is not None:
++            object.__setattr__(self, ""scopes"", tuple(self.scopes))"
+fastapi_14458,"diff --git a/fastapi/dependencies/models.py b/fastapi/dependencies/models.py
+index af168a17..509b8f06 100644
+--- a/fastapi/dependencies/models.py
++++ b/fastapi/dependencies/models.py
+@@ -110,6 +110,8 @@ class Dependant:
+             _impartial(self.call)
+         ) or inspect.isgeneratorfunction(_unwrapped_call(self.call)):
+             return True
++        if inspect.isclass(_impartial(self.call)):
++            return False
+         dunder_call = getattr(_impartial(self.call), ""__call__"", None)  # noqa: B004
+         if dunder_call is None:
+             return False  # pragma: no cover
+@@ -134,6 +136,8 @@ class Dependant:
+             _impartial(self.call)
+         ) or inspect.isasyncgenfunction(_unwrapped_call(self.call)):
+             return True
++        if inspect.isclass(_impartial(self.call)):
++            return False
+         dunder_call = getattr(_impartial(self.call), ""__call__"", None)  # noqa: B004
+         if dunder_call is None:
+             return False  # pragma: no cover
+@@ -162,6 +166,8 @@ class Dependant:
+             _unwrapped_call(self.call)
+         ):
+             return True
++        if inspect.isclass(_impartial(self.call)):
++            return False
+         dunder_call = getattr(_impartial(self.call), ""__call__"", None)  # noqa: B004
+         if dunder_call is None:
+             return False  # pragma: no cover"

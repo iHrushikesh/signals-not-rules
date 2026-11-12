@@ -1,0 +1,19 @@
+{
+ "name": "probe8m",
+ "created": "2026-11-11",
+ "purpose": "Replaces probe8. Eight measurable tuning tasks (splits/measurable_tasks.json). Too few for significance; for timings, traces and failure modes.",
+ "method": "Repo quota 5 rich, 3 fastapi (the measurable tuning pool is 12 and 9). Exhaustive search for the subset whose patch size, hunk count and problem-length quartiles and multi-file share are closest to all 129 dev tasks.",
+ "tasks": [
+  "rich_3061",
+  "rich_3470",
+  "rich_3521",
+  "rich_3894",
+  "rich_4006",
+  "fastapi_13920",
+  "fastapi_14372",
+  "fastapi_14458"
+ ],
+ "kept_from_probe8": [
+  "rich_3894"
+ ]
+}

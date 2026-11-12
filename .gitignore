@@ -1,0 +1,37 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Competition data: never commit (rule 2.4.b forbids redistribution)
+data/*
+!data/README.md
+
+# Submissions, adapter weights and agent traces
+submission*.zip
+submission.parquet
+*.safetensors
+results/**/traces/
+
+# Derived from the competition starter notebook
+notebook_cells/*.ipynb
+probe8_cells.py
+
+# Probe result bundles hold traces with task text
+results/**/*.zip
+results/**/logs/
+results/**/patches/
+
+# Test output of the hidden tests, per task (competition data)
+results/**/test_output/
+
+# Local exports and OS files
+output/
+.DS_Store
+.claude/

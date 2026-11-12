@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/google/adk-python/v1.36.1/src/google/adk/agents/config_schemas/AgentConfig.json
+# Stage 1: read-only search. Its final reply is saved to state as localization.
+# Graph ablation arm: delete the three graph tools below and nothing else.
+name: localizer
+description: Finds the files and functions to change. Read-only and runs no code.
+model: gemma-4-31b-it-qat-w4a16-ct
+instruction: !include ../prompts/localizer.md
+include_contents: none
+output_key: localization
+tools:
+  - read_file
+  - run_command
+  - get_status
+  - search_similar_code
+  - get_code_neighbors
+  - get_code_subgraph
+generate_content_config: !include ../configs/localizer.yaml
