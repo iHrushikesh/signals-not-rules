@@ -146,7 +146,7 @@ Several builds changed more than one thing, so some attributions in Section 4 ar
 
 For a small open model under a fixed budget, the first problem is not where to spend compute but whether the agent can spend it at all. The controls that worked were the ones the model sees as data: tool results, reply templates, and scripts that do the fragile work and report one line. Next: validated tasks for every comparison, an editing interface that keeps code in one argument, and fine-tuning aimed at the coder's generation cost.
 
-**Reproducibility.** [Repository link.] The agent configurations for every build, the probe notebook, the analysis scripts and the decision rules with their dates are in the repository; competition data is not, per the rules.
+**Reproducibility.** The agent configuration of every probed build, the per-task results and patches of every probe, the gold validation, the notebook cells, the analysis scripts and the decision rules with their dates are at https://github.com/iHrushikesh/signals-not-rules; competition data is not, per the rules.
 
 ## References
 

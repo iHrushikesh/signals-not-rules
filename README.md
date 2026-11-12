@@ -8,6 +8,7 @@ Code, agent and results behind the paper *Signals, Not Rules* (docs/paper_draft.
 |---|---|
 | `docs/paper_draft.md` | The paper |
 | `docs/agent_design.md` | Design document; sections 11.x log each probe and build |
+| `PLAN.md` | The working plan: pre-registered decision rules with their dates, the study design, and the log of what was submitted and why |
 | `agent/` | Build 11 of the submission: `agent.yaml`, sub-agent configs, prompts, and the `verify-fix` skill (standard library only) |
 | `results/probe8-<n>/`, `results/probe8m-<n>/` | One folder per probe run: per-task table, agent patches, version banner, and a snapshot of the agent build that ran. Traces and test output are not included |
 | `results/gold-1/` | Gold-patch validation of the 129 development tasks: reference fix and no fix, per task |
@@ -18,7 +19,7 @@ Code, agent and results behind the paper *Signals, Not Rules* (docs/paper_draft.
 | `tests/` | Tests for the skill scripts, run through ADK's own script wrapper |
 | `data/` | Competition files; not included (see `data/README.md`) |
 
-Builds are identified by the first eight hex digits of the SHA-256 over the files in the submission zip; `results/<run>/probe8/version.txt` records which build each probe ran. References to "PLAN item n" in the design document point to the planning file of the competition workspace, which is not part of this repository.
+Builds are identified by the first eight hex digits of the SHA-256 over the files in the submission zip; `results/<run>/probe8/version.txt` records which build each probe ran.
 
 ## Commands
 
